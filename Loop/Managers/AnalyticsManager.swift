@@ -7,116 +7,154 @@
 //
 
 import Foundation
-import AmplitudeFramework
+import Amplitude
+import LoopKit
+import LoopCore
 
 
-class AnalyticsManager {
+final class AnalyticsManager: IdentifiableClass {
+
+    var amplitudeService: AmplitudeService {
+        didSet {
+            try! KeychainManager().setAmplitudeAPIKey(amplitudeService.APIKey)
+        }
+    }
+
+    init() {
+        if let APIKey = KeychainManager().getAmplitudeAPIKey() {
+            amplitudeService = AmplitudeService(APIKey: APIKey)
+        } else {
+            amplitudeService = AmplitudeService(APIKey: nil)
+        }
+
+        logger = DiagnosticLogger.shared.forCategory(type(of: self).className)
+    }
+
+    static let shared = AnalyticsManager()
 
     // MARK: - Helpers
 
-    private static var isSimulator: Bool = TARGET_OS_SIMULATOR != 0
+    private var logger: CategoryLogger?
 
-    private static var amplitudeAPIKey: String? {
-        if let settings = NSBundle.mainBundle().remoteSettings, key = settings["AmplitudeAPIKey"] where !key.isEmpty {
-            return key
-        }
-
-        return nil
-    }
-
-    private static func logEvent(name: String, withProperties properties: [NSObject: AnyObject]? = nil, outOfSession: Bool = false) {
-        guard amplitudeAPIKey != nil else {
-            return
-        }
-
-        if isSimulator {
-            NSLog("\(name) \(properties ?? [:])")
-        } else {
-            Amplitude.instance().logEvent(name, withEventProperties: properties, outOfSession: outOfSession)
-        }
-
+    private func logEvent(_ name: String, withProperties properties: [AnyHashable: Any]? = nil, outOfSession: Bool = false) {
+        logger?.debug("\(name) \(properties ?? [:])")
+        amplitudeService.client?.logEvent(name, withEventProperties: properties, outOfSession: outOfSession)
     }
 
     // MARK: - UIApplicationDelegate
 
-    static func application(application: UIApplication, didFinishLaunchingWithOptions launchOptions: [NSObject : AnyObject]?) {
-
-        if let APIKey = amplitudeAPIKey {
-            Amplitude.instance().initializeApiKey(APIKey)
-        }
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [AnyHashable: Any]?) {
+        logEvent("App Launch")
     }
 
     // MARK: - Screens
 
-    static func didDisplayBolusScreen() {
+    func didDisplayBolusScreen() {
         logEvent("Bolus Screen")
     }
 
-    static func didDisplaySettingsScreen() {
+    func didDisplaySettingsScreen() {
         logEvent("Settings Screen")
     }
 
-    static func didDisplayStatusScreen() {
+    func didDisplayStatusScreen() {
         logEvent("Status Screen")
     }
 
     // MARK: - Config Events
 
-    static func didChangeRileyLinkConnectionState() {
-        logEvent("RileyLink Connection")
+    func transmitterTimeDidDrift(_ drift: TimeInterval) {
+        logEvent("Transmitter time change", withProperties: ["value" : drift], outOfSession: true)
     }
 
-    static func transmitterTimeDidDrift(drift: NSTimeInterval) {
-        logEvent("Transmitter time change", withProperties: ["value" : drift])
+    func pumpTimeDidDrift(_ drift: TimeInterval) {
+        logEvent("Pump time change", withProperties: ["value": drift], outOfSession: true)
     }
 
-    static func didChangeBasalRateSchedule() {
+    func punpTimeZoneDidChange() {
+        logEvent("Pump time zone change", outOfSession: true)
+    }
+
+    func pumpBatteryWasReplaced() {
+        logEvent("Pump battery replacement", outOfSession: true)
+    }
+
+    func reservoirWasRewound() {
+        logEvent("Pump reservoir rewind", outOfSession: true)
+    }
+
+    func didChangeBasalRateSchedule() {
         logEvent("Basal rate change")
     }
 
-    static func didChangeCarbRatioSchedule() {
+    func didChangeCarbRatioSchedule() {
         logEvent("Carb ratio change")
     }
 
-    static func didChangeInsulinActionDuration() {
-        logEvent("Insulin action duration change")
+    func didChangeInsulinModel() {
+        logEvent("Insulin model change")
     }
 
-    static func didChangeInsulinSensitivitySchedule() {
+    func didChangeInsulinSensitivitySchedule() {
         logEvent("Insulin sensitivity change")
     }
 
-    static func didChangeGlucoseTargetRangeSchedule() {
-        logEvent("Glucose target range change")
+    func didChangeLoopSettings(from oldValue: LoopSettings, to newValue: LoopSettings) {
+        if newValue.maximumBasalRatePerHour != oldValue.maximumBasalRatePerHour {
+            logEvent("Maximum basal rate change")
+        }
+
+        if newValue.maximumBolus != oldValue.maximumBolus {
+            logEvent("Maximum bolus change")
+        }
+
+        if newValue.suspendThreshold != oldValue.suspendThreshold {
+            logEvent("Minimum BG Guard change")
+        }
+
+        if newValue.dosingEnabled != oldValue.dosingEnabled {
+            logEvent("Closed loop enabled change")
+        }
+
+        if newValue.retrospectiveCorrectionEnabled != oldValue.retrospectiveCorrectionEnabled {
+            logEvent("Retrospective correction enabled change")
+        }
+
+        if newValue.glucoseTargetRangeSchedule != oldValue.glucoseTargetRangeSchedule {
+            if newValue.glucoseTargetRangeSchedule?.timeZone != oldValue.glucoseTargetRangeSchedule?.timeZone {
+                self.punpTimeZoneDidChange()
+            } else if newValue.scheduleOverride != oldValue.scheduleOverride {
+                logEvent("Temporary schedule override change", outOfSession: true)
+            } else {
+                logEvent("Glucose target range change")
+            }
+        }
     }
 
-    static func didChangeMaximumBasalRate() {
-        logEvent("Maximum basal rate change")
-    }
-
-    static func didChangeMaximumBolus() {
-        logEvent("Maximum bolus change")
-    }
 
     // MARK: - Loop Events
 
-    static func didAddCarbsFromWatch(carbs: Double) {
-        logEvent("Carb entry created", withProperties: ["source" : "Watch", "value": carbs], outOfSession: true)
+    func didAddCarbsFromWatch() {
+        logEvent("Carb entry created", withProperties: ["source" : "Watch"], outOfSession: true)
     }
 
-    static func didRetryBolus() {
+    func didRetryBolus() {
         logEvent("Bolus Retry", outOfSession: true)
     }
 
-    static func didSetBolusFromWatch(units: Double) {
-        logEvent("Bolus set", withProperties: ["source" : "Watch", "value": units], outOfSession: true)
+    func didSetBolusFromWatch(_ units: Double) {
+        logEvent("Bolus set", withProperties: ["source" : "Watch"], outOfSession: true)
     }
 
-    static func loopDidSucceed() {
-        logEvent("Loop success", outOfSession: true)
+    func didFetchNewCGMData() {
+        logEvent("CGM Fetch", outOfSession: true)
     }
 
-    static func loopDidError() {
+    func loopDidSucceed(_ duration: TimeInterval) {
+        logEvent("Loop success", withProperties: ["duration": duration], outOfSession: true)
+    }
+
+    func loopDidError() {
         logEvent("Loop error", outOfSession: true)
     }
 }

@@ -7,19 +7,24 @@
 //
 
 import UIKit
+import LoopUI
 
-class ChartTableViewCell: UITableViewCell {
 
-    var chartView: UIView? {
-        didSet {
-            if let view = oldValue {
-                view.removeFromSuperview()
-            }
+final class ChartTableViewCell: UITableViewCell {
 
-            if let view = chartView {
-                contentView.addSubview(view)
-            }
-        }
+    @IBOutlet weak var chartContentView: ChartContainerView!
+
+    @IBOutlet weak var titleLabel: UILabel?
+
+    @IBOutlet weak var subtitleLabel: UILabel?
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+
+        chartContentView.chartGenerator = nil
     }
 
+    func reloadChart() {
+        chartContentView.reloadChart()
+    }
 }

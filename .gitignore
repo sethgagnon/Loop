@@ -3,7 +3,7 @@
 # gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
 
 ## Build generated
-build/
+# build/
 DerivedData
 
 ## Various settings
@@ -49,12 +49,12 @@ Pods/
 # Carthage
 #
 # Add this line if you want to avoid checking in source code from Carthage dependencies.
-Carthage/Checkouts
-Carthage/Build
+Carthage/
+.gitmodules
 
 # fastlane
 #
-# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the 
+# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
 # screenshots whenever they are needed.
 # For more information about the recommended setup visit:
 # https://github.com/fastlane/fastlane/blob/master/docs/Gitignore.md
@@ -64,3 +64,13 @@ fastlane/screenshots
 
 # Sensitive details about remote backup
 RemoteSettings.plist
+
+# OS
+.DS_Store
+
+# Framework development
+Loop.xcworkspace
+
+# Avoid checking in built assets
+Loop/DerivedAssets.xcassets/
+WatchApp/DerivedAssets.xcassets/

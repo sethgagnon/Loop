@@ -7,109 +7,205 @@
 //
 
 import ClockKit
+import WatchKit
 
 
-class ComplicationController: NSObject, CLKComplicationDataSource {
+final class ComplicationController: NSObject, CLKComplicationDataSource {
     
     // MARK: - Timeline Configuration
     
-    func getSupportedTimeTravelDirectionsForComplication(complication: CLKComplication, withHandler handler: (CLKComplicationTimeTravelDirections) -> Void) {
-        handler([.Backward])
+    func getSupportedTimeTravelDirections(for complication: CLKComplication, withHandler handler: @escaping (CLKComplicationTimeTravelDirections) -> Void) {
+        handler([.backward])
     }
     
-    func getTimelineStartDateForComplication(complication: CLKComplication, withHandler handler: (NSDate?) -> Void) {
-        if let date = DeviceDataManager.sharedManager.lastContextData?.glucoseDate {
+    func getTimelineStartDate(for complication: CLKComplication, withHandler handler: @escaping (Date?) -> Void) {
+        if let date = ExtensionDelegate.shared().loopManager.activeContext?.glucoseDate {
             handler(date)
         } else {
             handler(nil)
         }
     }
     
-    func getTimelineEndDateForComplication(complication: CLKComplication, withHandler handler: (NSDate?) -> Void) {
-        if let date = DeviceDataManager.sharedManager.lastContextData?.glucoseDate {
+    func getTimelineEndDate(for complication: CLKComplication, withHandler handler: @escaping (Date?) -> Void) {
+        if let date = ExtensionDelegate.shared().loopManager.activeContext?.glucoseDate {
             handler(date)
         } else {
             handler(nil)
         }
     }
     
-    func getPrivacyBehaviorForComplication(complication: CLKComplication, withHandler handler: (CLKComplicationPrivacyBehavior) -> Void) {
-        handler(.HideOnLockScreen)
+    func getPrivacyBehavior(for complication: CLKComplication, withHandler handler: @escaping (CLKComplicationPrivacyBehavior) -> Void) {
+        handler(.hideOnLockScreen)
     }
     
     // MARK: - Timeline Population
 
-    private lazy var formatter = NSNumberFormatter()
+    private let chartManager = ComplicationChartManager()
 
-    func getCurrentTimelineEntryForComplication(complication: CLKComplication, withHandler handler: ((CLKComplicationTimelineEntry?) -> Void)) {
+    private func updateChartManagerIfNeeded(completion: @escaping () -> Void) {
+        guard
+            #available(watchOSApplicationExtension 5.0, *),
+            let activeComplications = CLKComplicationServer.sharedInstance().activeComplications,
+            activeComplications.contains(where: { $0.family == .graphicRectangular })
+        else {
+            completion()
+            return
+        }
 
-        switch complication.family {
-        case .ModularSmall:
-            if let context = DeviceDataManager.sharedManager.lastContextData,
-                glucose = context.glucose,
-                unit = context.preferredGlucoseUnit,
-                glucoseString = formatter.stringFromNumber(glucose.doubleValueForUnit(unit)),
-                date = context.glucoseDate where date.timeIntervalSinceNow.minutes >= -15,
-                let template = CLKComplicationTemplateModularSmallStackText(line1: glucoseString, date: date)
-            {
-                handler(CLKComplicationTimelineEntry(date: date, complicationTemplate: template))
-            } else {
-                handler(nil)
-            }
-        default:
-            handler(nil)
+        ExtensionDelegate.shared().loopManager.generateChartData { chartData in
+            self.chartManager.data = chartData
+            completion()
         }
     }
+
+    func makeChart() -> UIImage? {
+        // c.f. https://developer.apple.com/design/human-interface-guidelines/watchos/icons-and-images/complication-images/
+        let size: CGSize = {
+            switch WKInterfaceDevice.current().screenBounds.width {
+            case let x where x > 180:  // 44mm
+                return CGSize(width: 171.0, height: 54.0)
+            default: // 40mm
+                return CGSize(width: 150.0, height: 47.0)
+            }
+        }()
+
+        let scale = WKInterfaceDevice.current().screenScale
+        return chartManager.renderChartImage(size: size, scale: scale)
+    }
+
+    func getCurrentTimelineEntry(for complication: CLKComplication, withHandler handler: (@escaping (CLKComplicationTimelineEntry?) -> Void)) {
+        updateChartManagerIfNeeded(completion: {
+            let entry: CLKComplicationTimelineEntry?
+
+            if  let context = ExtensionDelegate.shared().loopManager.activeContext,
+                let glucoseDate = context.glucoseDate,
+                glucoseDate.timeIntervalSinceNow.minutes >= -15,
+                let template = CLKComplicationTemplate.templateForFamily(complication.family, from: context, chartGenerator: self.makeChart)
+            {
+                switch complication.family {
+                case .graphicRectangular:
+                    break
+                default:
+                    template.tintColor = .tintColor
+                }
+                entry = CLKComplicationTimelineEntry(date: glucoseDate, complicationTemplate: template)
+            } else {
+                entry = nil
+            }
+
+            handler(entry)
+        })
+    }
     
-    func getTimelineEntriesForComplication(complication: CLKComplication, beforeDate date: NSDate, limit: Int, withHandler handler: (([CLKComplicationTimelineEntry]?) -> Void)) {
+    func getTimelineEntries(for complication: CLKComplication, before date: Date, limit: Int, withHandler handler: (@escaping ([CLKComplicationTimelineEntry]?) -> Void)) {
         // Call the handler with the timeline entries prior to the given date
         handler(nil)
     }
     
-    func getTimelineEntriesForComplication(complication: CLKComplication, afterDate date: NSDate, limit: Int, withHandler handler: (([CLKComplicationTimelineEntry]?) -> Void)) {
-        // Call the handler with the timeline entries after to the given date
-        if let context = DeviceDataManager.sharedManager.lastContextData,
-            glucose = context.glucose,
-            unit = context.preferredGlucoseUnit,
-            glucoseString = formatter.stringFromNumber(glucose.doubleValueForUnit(unit)),
-            glucoseDate = context.glucoseDate where glucoseDate.timeIntervalSinceDate(date) > 0,
-            let template = CLKComplicationTemplateModularSmallStackText(line1: glucoseString, date: glucoseDate)
-        {
-            handler([CLKComplicationTimelineEntry(date: glucoseDate, complicationTemplate: template)])
-        } else {
-            handler(nil)
+    func getTimelineEntries(for complication: CLKComplication, after date: Date, limit: Int, withHandler handler: (@escaping ([CLKComplicationTimelineEntry]?) -> Void)) {
+        updateChartManagerIfNeeded {
+            let entries: [CLKComplicationTimelineEntry]?
+
+            if  let context = ExtensionDelegate.shared().loopManager.activeContext,
+                let glucoseDate = context.glucoseDate,
+                glucoseDate.timeIntervalSince(date) > 0,
+                let template = CLKComplicationTemplate.templateForFamily(complication.family, from: context, chartGenerator: self.makeChart)
+            {
+                template.tintColor = UIColor.tintColor
+                entries = [CLKComplicationTimelineEntry(date: glucoseDate, complicationTemplate: template)]
+            } else {
+                entries = nil
+            }
+
+            handler(entries)
         }
     }
 
-    func requestedUpdateDidBegin() {
-        DeviceDataManager.sharedManager.updateComplicationDataIfNeeded()
-    }
-
-    func requestedUpdateBudgetExhausted() {
-        DiagnosticLogger()?.addError(#function, fromSource: "ClockKit")
-    }
-
-    // MARK: - Update Scheduling
-    
-    func getNextRequestedUpdateDateWithHandler(handler: (NSDate?) -> Void) {
-        // Call the handler with the date when you would next like to be given the opportunity to update your complication content
-        handler(NSDate(timeIntervalSinceNow: NSTimeInterval(2 * 60 * 60)))
-    }
-    
     // MARK: - Placeholder Templates
-    
-    func getPlaceholderTemplateForComplication(complication: CLKComplication, withHandler handler: (CLKComplicationTemplate?) -> Void) {
-        switch complication.family {
-        case .ModularSmall:
-            let template = CLKComplicationTemplateModularSmallStackText()
 
-            template.line1TextProvider = CLKSimpleTextProvider(text: "--", shortText: "--", accessibilityLabel: "No glucose value available")
-            template.line2TextProvider = CLKSimpleTextProvider(text: "mg/dL")
-
-            handler(template)
-        default:
-            handler(nil)
-        }
+    func getLocalizableSampleTemplate(for complication: CLKComplication, withHandler handler: @escaping (CLKComplicationTemplate?) -> Void) {
+        let template = getLocalizableSampleTemplate(for: complication.family)
+        handler(template)
     }
 
+    func getLocalizableSampleTemplate(for family: CLKComplicationFamily) -> CLKComplicationTemplate? {
+        let glucoseAndTrendText = CLKSimpleTextProvider.localizableTextProvider(withStringsFileTextKey: "120↘︎")
+        let glucoseText = CLKSimpleTextProvider.localizableTextProvider(withStringsFileTextKey: "120")
+        let timeText = CLKSimpleTextProvider.localizableTextProvider(withStringsFileTextKey: "3MIN")
+
+        switch family {
+        case .modularSmall:
+            let template = CLKComplicationTemplateModularSmallStackText()
+            template.line1TextProvider = glucoseAndTrendText
+            template.line2TextProvider = timeText
+            return template
+        case .modularLarge:
+            let template = CLKComplicationTemplateModularLargeTallBody()
+            template.bodyTextProvider = glucoseAndTrendText
+            template.headerTextProvider = timeText
+            return template
+        case .circularSmall:
+            let template = CLKComplicationTemplateCircularSmallSimpleText()
+            template.textProvider = glucoseAndTrendText
+            return template
+        case .extraLarge:
+            let template = CLKComplicationTemplateExtraLargeStackText()
+            template.line1TextProvider = glucoseAndTrendText
+            template.line2TextProvider = timeText
+            return template
+        case .utilitarianSmall, .utilitarianSmallFlat:
+            let template = CLKComplicationTemplateUtilitarianSmallFlat()
+            template.textProvider = glucoseAndTrendText
+            return template
+        case .utilitarianLarge:
+            let template = CLKComplicationTemplateUtilitarianLargeFlat()
+            let eventualGlucoseText = CLKSimpleTextProvider.localizableTextProvider(withStringsFileTextKey: "75")
+            template.textProvider = CLKSimpleTextProvider.localizableTextProvider(withStringsFileFormatKey: "UtilitarianLargeFlat", textProviders: [glucoseAndTrendText, eventualGlucoseText, CLKTimeTextProvider(date: Date())])
+            return template
+        case .graphicCorner:
+            if #available(watchOSApplicationExtension 5.0, *) {
+                let template = CLKComplicationTemplateGraphicCornerStackText()
+                timeText.tintColor = .tintColor
+                template.innerTextProvider = timeText
+                template.outerTextProvider = glucoseAndTrendText
+                return template
+            } else {
+                return nil
+            }
+        case .graphicCircular:
+            if #available(watchOSApplicationExtension 5.0, *) {
+                let template = CLKComplicationTemplateGraphicCircularOpenGaugeSimpleText()
+                template.centerTextProvider = glucoseText
+                template.bottomTextProvider = CLKSimpleTextProvider(text: "↘︎")
+                template.gaugeProvider = CLKSimpleGaugeProvider(style: .fill, gaugeColor: .tintColor, fillFraction: 1)
+                return template
+            } else {
+                return nil
+            }
+        case .graphicBezel:
+            if #available(watchOSApplicationExtension 5.0, *) {
+                let template = CLKComplicationTemplateGraphicBezelCircularText()
+                guard let circularTemplate = getLocalizableSampleTemplate(for: .graphicCircular) as? CLKComplicationTemplateGraphicCircular else {
+                    fatalError("\(#function) invoked with .graphicCircular must return a subclass of CLKComplicationTemplateGraphicCircular")
+                }
+                template.circularTemplate = circularTemplate
+                template.textProvider = timeText
+                return template
+            } else {
+                return nil
+            }
+        case .graphicRectangular:
+            if #available(watchOSApplicationExtension 5.0, *) {
+                let template = CLKComplicationTemplateGraphicRectangularLargeImage()
+                // TODO: Better placeholder image here
+                template.imageProvider = CLKFullColorImageProvider(fullColorImage: UIImage())
+                template.textProvider = glucoseAndTrendText
+                return template
+            } else {
+                return nil
+            }
+        @unknown default:
+            return nil
+        }
+    }
 }

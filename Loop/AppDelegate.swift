@@ -7,77 +7,119 @@
 //
 
 import UIKit
-import CarbKit
-import InsulinKit
+import Intents
+import LoopKit
+import UserNotifications
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+final class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    private lazy var log = DiagnosticLogger.shared.forCategory("AppDelegate")
 
     var window: UIWindow?
 
-    func application(application: UIApplication, didFinishLaunchingWithOptions launchOptions: [NSObject: AnyObject]?) -> Bool {
-        window?.tintColor = UIColor.tintColor
+    private(set) lazy var deviceManager = DeviceDataManager()
 
-        NotificationManager.authorize()
+    private var rootViewController: RootNavigationController! {
+        return window?.rootViewController as? RootNavigationController
+    }
 
-        AnalyticsManager.application(application, didFinishLaunchingWithOptions: launchOptions)
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        NotificationManager.authorize(delegate: self)
+        
+        log.info(#function)
+
+        AnalyticsManager.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
+
+        rootViewController.rootViewController.deviceManager = deviceManager
+        
+        let notificationOption = launchOptions?[.remoteNotification]
+        
+        if let notification = notificationOption as? [String: AnyObject] {
+            deviceManager.handleRemoteNotification(notification)
+        }
 
         return true
     }
 
-    func applicationWillResignActive(application: UIApplication) {
-        // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
-        // Use this method to pause ongoing tasks, disable timers, and throttle down OpenGL ES frame rates. Games should use this method to pause the game.
+    func applicationWillResignActive(_ application: UIApplication) {
     }
 
-    func applicationDidEnterBackground(application: UIApplication) {
-        // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-        // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
+    func applicationDidEnterBackground(_ application: UIApplication) {
     }
 
-    func applicationWillEnterForeground(application: UIApplication) {
-        // Called as part of the transition from the background to the inactive state; here you can undo many of the changes made on entering the background.
+    func applicationWillEnterForeground(_ application: UIApplication) {
     }
 
-    func applicationDidBecomeActive(application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
-
-        DeviceDataManager.sharedManager.transmitter?.resumeScanning()
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        deviceManager.updatePumpManagerBLEHeartbeatPreference()
     }
 
-    func applicationWillTerminate(application: UIApplication) {
-        // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+    func applicationWillTerminate(_ application: UIApplication) {
     }
 
-    func applicationShouldRequestHealthAuthorization(application: UIApplication) {
+    // MARK: - Continuity
 
-    }
+    func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
 
-    // MARK: - Notifications
-
-    func application(application: UIApplication, didReceiveLocalNotification notification: UILocalNotification) {
-        if application.applicationState == .Active {
-            if let message = notification.alertBody {
-                window?.rootViewController?.presentAlertControllerWithTitle(notification.alertTitle, message: message, animated: true, completion: nil)
+        if #available(iOS 12.0, *) {
+            if userActivity.activityType == NewCarbEntryIntent.className {
+                log.default("Restoring \(userActivity.activityType) intent")
+                rootViewController.restoreUserActivityState(.forNewCarbEntry())
+                return true
             }
         }
+
+        switch userActivity.activityType {
+        case NSUserActivity.newCarbEntryActivityType,
+             NSUserActivity.viewLoopStatusActivityType:
+            log.default("Restoring \(userActivity.activityType) activity")
+            restorationHandler([rootViewController])
+            return true
+        default:
+            return false
+        }
+    }
+    
+    // MARK: - Remote notifications
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
+        let token = tokenParts.joined()
+        log.default("RemoteNotifications device token: \(token)")
+        deviceManager.loopManager.settings.deviceToken = deviceToken
     }
 
-    func application(application: UIApplication, handleActionWithIdentifier identifier: String?, forLocalNotification notification: UILocalNotification, withResponseInfo responseInfo: [NSObject : AnyObject], completionHandler: () -> Void) {
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        log.error("Failed to register: \(error)")
+    }
+    
+    func application(_ application: UIApplication,
+                     didReceiveRemoteNotification userInfo: [AnyHashable : Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        guard let notification = userInfo as? [String: AnyObject] else {
+            completionHandler(.failed)
+            return
+        }
+      
+        deviceManager.handleRemoteNotification(notification)
+        completionHandler(.noData)
+    }
 
-        switch identifier {
-        case NotificationManager.Action.RetryBolus.rawValue?:
-            if let units = notification.userInfo?[NotificationManager.UserInfoKey.BolusAmount.rawValue] as? Double,
-                startDate = notification.userInfo?[NotificationManager.UserInfoKey.BolusStartDate.rawValue] as? NSDate where
-                startDate.timeIntervalSinceNow >= NSTimeInterval(minutes: -5)
+}
+
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        switch response.actionIdentifier {
+        case NotificationManager.Action.retryBolus.rawValue:
+            if  let units = response.notification.request.content.userInfo[NotificationManager.UserInfoKey.bolusAmount.rawValue] as? Double,
+                let startDate = response.notification.request.content.userInfo[NotificationManager.UserInfoKey.bolusStartDate.rawValue] as? Date,
+                startDate.timeIntervalSinceNow >= TimeInterval(minutes: -5)
             {
-                AnalyticsManager.didRetryBolus()
+                AnalyticsManager.shared.didRetryBolus()
 
-                DeviceDataManager.sharedManager.loopManager.enactBolus(units) { (success, error) in
-                    if !success {
-                        NotificationManager.sendBolusFailureNotificationForAmount(units, atDate: startDate)
-                    }
-
+                deviceManager.enactBolus(units: units, at: startDate) { (_) in
                     completionHandler()
                 }
                 return
@@ -85,13 +127,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         default:
             break
         }
-
+        
         completionHandler()
     }
 
-    // MARK: - 3D Touch
-
-    func application(application: UIApplication, performActionForShortcutItem shortcutItem: UIApplicationShortcutItem, completionHandler: (Bool) -> Void) {
-        completionHandler(false)
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.badge, .sound, .alert])
     }
+    
 }

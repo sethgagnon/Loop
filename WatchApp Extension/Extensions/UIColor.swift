@@ -10,9 +10,36 @@ import UIKit
 
 
 extension UIColor {
-    @nonobjc static let tintColor = UIColor.HIGOrangeColor()
+    static let tintColor = UIColor(named: "tint")!
 
-    @nonobjc static let darkTintColor = UIColor.HIGOrangeColorDark()
+    static let carbsColor = UIColor(named: "carbs")!
+
+    // Equivalent to carbsColor with alpha 0.14 on a black background
+    static let darkCarbsColor = UIColor(named: "carbs-dark")!
+
+    static let glucose = UIColor(named: "glucose")!
+
+    // Equivalent to glucoseColor with alpha 0.14 on a black background
+    static let darkGlucose = UIColor(named: "glucose-dark")!
+
+    static let insulin = UIColor(named: "insulin")!
+
+    static let darkInsulin = UIColor(named: "insulin-dark")!
+
+    static let overrideColor = UIColor(named: "workout")!
+
+    // Equivalent to workoutColor with alpha 0.14 on a black background
+    static let darkOverrideColor = UIColor(named: "workout-dark")!
+
+    static let disabledButtonColor = UIColor.gray
+
+    static let darkDisabledButtonColor = UIColor.disabledButtonColor.withAlphaComponent(0.14)
+
+    static let chartLabel = HIGWhiteColor()
+
+    static let chartNowLine = HIGWhiteColor().withAlphaComponent(0.2)
+
+    static let chartPlatter = HIGWhiteColorDark()
 
     // MARK: - HIG colors
     // See: https://developer.apple.com/watch/human-interface-guidelines/visual-design/#color
@@ -22,7 +49,7 @@ extension UIColor {
     }
 
     private static func HIGPinkColorDark() -> UIColor {
-        return HIGPinkColor().colorWithAlphaComponent(0.17)
+        return HIGPinkColor().withAlphaComponent(0.17)
     }
 
     private static func HIGRedColor() -> UIColor {
@@ -30,7 +57,7 @@ extension UIColor {
     }
 
     private static func HIGRedColorDark() -> UIColor {
-        return HIGRedColor().colorWithAlphaComponent(0.17)
+        return HIGRedColor().withAlphaComponent(0.17)
     }
 
     private static func HIGOrangeColor() -> UIColor {
@@ -38,7 +65,7 @@ extension UIColor {
     }
 
     private static func HIGOrangeColorDark() -> UIColor {
-        return HIGOrangeColor().colorWithAlphaComponent(0.15)
+        return HIGOrangeColor().withAlphaComponent(0.15)
     }
 
     private static func HIGYellowColor() -> UIColor {
@@ -46,7 +73,7 @@ extension UIColor {
     }
 
     private static func HIGYellowColorDark() -> UIColor {
-        return HIGYellowColor().colorWithAlphaComponent(0.14)
+        return HIGYellowColor().withAlphaComponent(0.14)
     }
 
     private static func HIGGreenColor() -> UIColor {
@@ -54,6 +81,15 @@ extension UIColor {
     }
 
     private static func HIGGreenColorDark() -> UIColor {
-        return HIGGreenColor().colorWithAlphaComponent(0.14)
+        return HIGGreenColor().withAlphaComponent(0.14)
+    }
+
+    private static func HIGWhiteColor() -> UIColor {
+        return UIColor(red: 242 / 255, green: 244 / 255, blue: 1, alpha: 1)
+    }
+
+    private static func HIGWhiteColorDark() -> UIColor {
+        // Equivalent to HIGWhiteColor().withAlphaComponent(0.14) on black
+        return UIColor(red: 33 / 255, green: 34 / 255, blue: 35 / 255, alpha: 1)
     }
 }

@@ -10,7 +10,7 @@ import UIKit
 
 
 extension UIImage {
-    private static func imageSuffixForLevel(level: Double?) -> String {
+    private static func imageSuffixForLevel(_ level: Double?) -> String {
         let suffix: String
 
         switch level {
@@ -31,11 +31,11 @@ extension UIImage {
         return suffix
     }
 
-    static func batteryHUDImageWithLevel(level: Double?) -> UIImage? {
-        return UIImage(named: "battery_\(imageSuffixForLevel(level))")
+    static func preMealImage(selected: Bool) -> UIImage? {
+        return UIImage(named: selected ? "Pre-Meal Selected" : "Pre-Meal")
     }
 
-    static func reservoirHUDImageWithLevel(level: Double?) -> UIImage? {
-        return UIImage(named: "reservoir_\(imageSuffixForLevel(level))")
+    static func workoutImage(selected: Bool) -> UIImage? {
+        return UIImage(named: selected ? "workout-selected" : "workout")
     }
 }
