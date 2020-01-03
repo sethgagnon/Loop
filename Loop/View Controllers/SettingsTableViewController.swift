@@ -73,6 +73,7 @@ final class SettingsTableViewController: UITableViewController {
         case carbRatio
         case insulinSensitivity
         case overridePresets
+        case tuning
     }
 
     fileprivate enum ServiceRow: Int, CaseCountable {
@@ -102,6 +103,26 @@ final class SettingsTableViewController: UITableViewController {
             }
 
             vc.delegate = self
+        case let vc as UINavigationController:
+            if let topVC = vc.topViewController, let tuneVC = topVC as? LoopTuningTableViewController {
+                tuneVC.doseStore = dataManager.loopManager.doseStore
+                tuneVC.glucoseStore = dataManager.loopManager.glucoseStore
+                tuneVC.carbStore = dataManager.loopManager.carbStore
+                tuneVC.insulinModelSettings = dataManager.loopManager.insulinModelSettings
+                tuneVC.allowedBasalRates = dataManager.pumpManager!.supportedBasalRates
+                tuneVC.maximumScheduleItemCount = dataManager.pumpManager!.maximumBasalScheduleEntryCount
+                tuneVC.minimumTimeInterval = dataManager.pumpManager!.minimumBasalScheduleEntryDuration
+                tuneVC.settings = dataManager.loopManager.settings
+                if let profile = dataManager.loopManager.basalRateSchedule {
+                    tuneVC.timeZone = profile.timeZone
+                } else {
+                    tuneVC.timeZone = dataManager.pumpManager!.status.timeZone
+                }
+                tuneVC.basalRateSchedule = dataManager.loopManager.basalRateSchedule
+                tuneVC.insulinSensitivitySchedule = dataManager.loopManager.insulinSensitivitySchedule
+                tuneVC.carbRatioSchedule = dataManager.loopManager.carbRatioSchedule
+                tuneVC.loopTuningDelegate = self
+            }
         default:
             break
         }
@@ -294,6 +315,13 @@ final class SettingsTableViewController: UITableViewController {
                     .map { $0.symbol }
                     .joined(separator: " ")
                 configCell.detailTextLabel?.text = presetPreviewText
+            case .tuning:
+                let cell = tableView.dequeueReusableCell(withIdentifier: TextButtonTableViewCell.className, for: indexPath) as! TextButtonTableViewCell
+                cell.textLabel?.text = "Tune Loop Parameters"
+                cell.textLabel?.textAlignment = .center
+                cell.tintColor = nil
+                cell.isEnabled = true
+                return cell
             }
 
             configCell.accessoryType = .disclosureIndicator
@@ -560,6 +588,13 @@ final class SettingsTableViewController: UITableViewController {
                 vc.delegate = self
 
                 show(vc, sender: sender)
+            case .tuning:
+                tableView.deselectRow(at: indexPath, animated: true)
+                guard dataManager.pumpManager != nil else {
+                    // Not allowing tuning without a configured pump.
+                    return
+                }
+                performSegue(withIdentifier: LoopTuningViewController.className, sender: sender)
             }
         case .loop:
             switch LoopRow(rawValue: indexPath.row)! {
@@ -860,6 +895,39 @@ extension SettingsTableViewController: OverridePresetTableViewControllerDelegate
     }
 }
 
+extension SettingsTableViewController: LoopTuningDelegate {
+    func loopTuningCanceled() {
+        dismiss(animated: true, completion: nil)
+    }
+    
+    func loopTuningCompleted(withParameters parameters: LoopTuningTunedParameters) {
+        let basalVC = BasalScheduleTableViewController(allowedBasalRates: [], maximumScheduleItemCount: 0, minimumTimeInterval: TimeInterval.minutes(0))
+        basalVC.scheduleItems = parameters.basalRateSchedule.items
+        dataManager.pumpManager!.syncScheduleValues(for: basalVC) { (result) in
+            DispatchQueue.main.async {
+                self.dismiss(animated: true, completion: nil)
+                switch result {
+                case .success(let items, let timeZone):
+                    self.dataManager.loopManager.basalRateSchedule = BasalRateSchedule(dailyItems: items, timeZone: timeZone)
+                    self.dataManager.loopManager.insulinSensitivitySchedule = parameters.insulinSensitivitySchedule
+                    AnalyticsManager.shared.didChangeInsulinSensitivitySchedule()
+                    // For some reason, the loop manager takes care of calling into the AnalyticsManager for basal rate schedule changes, but not the others.
+                    self.dataManager.loopManager.basalRateSchedule = parameters.basalRateSchedule
+                    self.dataManager.loopManager.carbRatioSchedule = parameters.carbRatioSchedule
+                    AnalyticsManager.shared.didChangeCarbRatioSchedule()
+                    self.tableView.reloadRows(at: [
+                        IndexPath(row: ConfigurationRow.insulinSensitivity.rawValue, section: Section.configuration.rawValue),
+                        IndexPath(row: ConfigurationRow.basalRate.rawValue, section: Section.configuration.rawValue),
+                        IndexPath(row: ConfigurationRow.carbRatio.rawValue, section: Section.configuration.rawValue),
+                    ], with: .none)
+                case .failure(let error):
+                    self.present(UIAlertController(with: error), animated: true)
+                }
+
+            }
+        }
+    }
+}
 
 private extension UIAlertController {
     convenience init(pumpDataDeletionHandler handler: @escaping () -> Void) {
