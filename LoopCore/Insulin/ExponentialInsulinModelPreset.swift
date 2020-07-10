@@ -16,7 +16,7 @@ public enum ExponentialInsulinModelPreset: String {
 
 
 // MARK: - Model generation
-extension ExponentialInsulinModelPreset {
+public extension ExponentialInsulinModelPreset {
     var actionDuration: TimeInterval {
         switch self {
         case .humalogNovologAdult:
