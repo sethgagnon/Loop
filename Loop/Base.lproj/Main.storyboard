@@ -1432,11 +1432,6 @@
             <point key="canvasLocation" x="2458" y="733"/>
         </scene>
     </scenes>
-    <inferredMetricsTieBreakers>
-        <segue reference="urz-4S-c6I"/>
-        <segue reference="viB-eQ-p7y"/>
-        <segue reference="PC7-vP-CUY"/>
-    </inferredMetricsTieBreakers>
     <resources>
         <image name="Oval Selection" width="21" height="21"/>
         <image name="Pre-Meal" width="29" height="29"/>
@@ -1449,4 +1444,9 @@
             <color red="0.3880000114440918" green="0.85500001907348633" blue="0.2199999988079071" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
         </namedColor>
     </resources>
+    <inferredMetricsTieBreakers>
+        <segue reference="urz-4S-c6I"/>
+        <segue reference="viB-eQ-p7y"/>
+        <segue reference="PC7-vP-CUY"/>
+    </inferredMetricsTieBreakers>
 </document>
