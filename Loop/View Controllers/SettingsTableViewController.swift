@@ -79,7 +79,7 @@ final class SettingsTableViewController: UITableViewController {
         case insulinModel
         case carbRatio
         case insulinSensitivity
-        case overridePresets
+ //       case overridePresets
         case tuning
     }
 
@@ -347,14 +347,14 @@ final class SettingsTableViewController: UITableViewController {
                 } else {
                     configCell.detailTextLabel?.text = SettingsTableViewCell.TapToSetString
                 }
-            case .overridePresets:
-                configCell.textLabel?.text = NSLocalizedString("Override Presets", comment: "The title text for the override presets")
-                let maxPreviewSymbolCount = 3
-                let presetPreviewText = dataManager.loopManager.settings.overridePresets
-                    .prefix(maxPreviewSymbolCount)
-                    .map { $0.symbol }
-                    .joined(separator: " ")
-                configCell.detailTextLabel?.text = presetPreviewText
+//            case .overridePresets:
+  //              configCell.textLabel?.text = NSLocalizedString("Override Presets", comment: "The title text for the override presets")
+    //            let maxPreviewSymbolCount = 3
+      //          let presetPreviewText = dataManager.loopManager.settings.overridePresets
+        //            .prefix(maxPreviewSymbolCount)
+          //          .map { $0.symbol }
+            //        .joined(separator: " ")
+              //  configCell.detailTextLabel?.text = presetPreviewText
             case .tuning:
                 let cell = tableView.dequeueReusableCell(withIdentifier: TextButtonTableViewCell.className, for: indexPath) as! TextButtonTableViewCell
                 cell.textLabel?.text = "Tune Loop Parameters"
@@ -1011,13 +1011,13 @@ extension SettingsTableViewController: DeliveryLimitSettingsTableViewControllerD
 }
 
 
-extension SettingsTableViewController: OverridePresetTableViewControllerDelegate {
-    func overridePresetTableViewControllerDidUpdatePresets(_ vc: OverridePresetTableViewController) {
-        dataManager.loopManager.settings.overridePresets = vc.presets
-
-        tableView.reloadRows(at: [[Section.configuration.rawValue, ConfigurationRow.overridePresets.rawValue]], with: .none)
-    }
-}
+//extension SettingsTableViewController: OverridePresetTableViewControllerDelegate {
+ //   func overridePresetTableViewControllerDidUpdatePresets(_ vc: OverridePresetTableViewController) {
+  //      dataManager.loopManager.settings.overridePresets = vc.presets
+//
+  //      tableView.reloadRows(at: [[Section.configuration.rawValue, ConfigurationRow.overridePresets.rawValue]], with: .none)
+    //}
+//}
 
 extension SettingsTableViewController: LoopTuningDelegate {
     func loopTuningCanceled() {
