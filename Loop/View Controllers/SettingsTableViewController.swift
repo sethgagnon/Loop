@@ -642,15 +642,15 @@ final class SettingsTableViewController: UITableViewController {
                 vc.syncSource = pumpManager
 
                 show(vc, sender: sender)
-            case .overridePresets:
-                guard let glucoseUnit = dataManager.loopManager.glucoseStore.preferredUnit else { break }
-                let vc = OverridePresetTableViewController(
-                    glucoseUnit: glucoseUnit,
-                    presets: dataManager.loopManager.settings.overridePresets
-                )
-                vc.delegate = self
-
-                show(vc, sender: sender)
+//            case .overridePresets:
+  //              guard let glucoseUnit = dataManager.loopManager.glucoseStore.preferredUnit else { break }
+    //            let vc = OverridePresetTableViewController(   
+      //              glucoseUnit: glucoseUnit,
+        //            presets: dataManager.loopManager.settings.overridePresets
+          //      )
+            //    vc.delegate = self
+//
+  //              show(vc, sender: sender)
             case .tuning:
                 tableView.deselectRow(at: indexPath, animated: true)
                 guard dataManager.pumpManager != nil else {
